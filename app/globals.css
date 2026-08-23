@@ -1,0 +1,18 @@
+/**
+ * TailwindCSS v4, CSS-first configuration.
+ *
+ * §1 (design system) owns this file: it fills in the token set — --paper,
+ * --ink, the signal colours, the three type families — as @theme variables.
+ * Until then this is only the reset, so that §2's scaffold renders plainly
+ * instead of inventing a look that §1 will have to undo.
+ */
+@import "tailwindcss";
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+}

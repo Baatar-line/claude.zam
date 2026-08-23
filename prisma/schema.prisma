@@ -1,0 +1,476 @@
+// ---------------------------------------------------------------------------
+// Зам — data model (§3)
+//
+// CORE PRINCIPLE
+//   Content (careers, universities, questions) is versioned and seeded.
+//   Student data is minimal, anonymous, and deletable in one cascade.
+//
+// Two conventions run through this file:
+//   1. Anything a student produces hangs off Session with onDelete: Cascade,
+//      so deleting one row removes every trace of that student.
+//   2. Content-to-content links that are read-only after seeding are stored
+//      as String[] of ids rather than join tables (Program.careerIds,
+//      Career.adjacentCareerIds). Postgres cannot enforce a foreign key
+//      inside an array, so referential integrity for these is checked by the
+//      seed validator in prisma/seed — never at request time.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Neon's pooled connection cannot run DDL, so migrations use the direct
+  // one. Locally the two are the same string.
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// --- enums -----------------------------------------------------------------
+
+enum EntryPath {
+  EXPLORE // "I don't know what suits me"
+  VALIDATE // "I've already decided, check me"
+}
+
+enum SessionVariant {
+  JUNIOR // grades 7-9
+  SENIOR // grades 10-12
+}
+
+enum QuestionVariant {
+  JUNIOR
+  SENIOR
+  BOTH
+}
+
+enum QuestionKind {
+  SINGLE
+  RANK
+  SLIDER
+  TIMED_ABILITY
+  ATTENTION_CHECK
+}
+
+/// The 23 traits, in four groups. The group a trait belongs to decides its
+/// weight in the match (§4), so the grouping lives in lib/scoring/traits.ts
+/// as the single source of truth and is mirrored here only by ordering.
+enum Trait {
+  // ability
+  LOGIC
+  SPATIAL
+  VERBAL
+  NUMERIC
+  MEMORY
+  PROCESSING
+
+  // interest
+  REALISTIC
+  INVESTIGATIVE
+  ARTISTIC
+  SOCIAL
+  ENTERPRISING
+  CONVENTIONAL
+
+  // personality
+  OPENNESS
+  CONSCIENTIOUSNESS
+  EXTRAVERSION
+  AGREEABLENESS
+  STABILITY
+
+  // value — STABILITY_V is suffixed to keep it distinct from the
+  // personality trait STABILITY, which measures something else entirely.
+  STABILITY_V
+  INCOME
+  CREATIVITY
+  HELPING
+  AUTONOMY
+  PRESTIGE
+}
+
+enum DemandLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum AiRisk {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum Saturation {
+  SATURATED
+  BALANCED
+  UNDERSUPPLIED
+}
+
+enum RoadmapCategory {
+  SUBJECT
+  SKILL
+  ACTIVITY
+  EXPERIENCE
+  RESOURCE
+}
+
+/// Produced by detectInvalid() in §4. Persisted on Session because two
+/// screens need it after the fact: the result page shows a quiet retake
+/// note, and the school dashboard excludes flagged sessions from aggregates.
+enum InvalidityFlag {
+  STRAIGHT_LINE
+  TOO_FAST
+  ATTENTION_FAILED
+  INCOMPLETE
+}
+
+// --- student data ----------------------------------------------------------
+
+model Session {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entryPath  EntryPath
+  gradeLevel Int // 7..12, range enforced by Zod at the boundary
+  variant    SessionVariant
+
+  /// Only the hash of the 6-character resume code is stored, and it is
+  /// compared in constant time. The code itself is shown once, to the
+  /// student, and never persisted.
+  resumeCodeHash String? @unique
+
+  /// Set on the VALIDATE path: the career the student arrived already
+  /// believing in.
+  chosenCareerId String?
+  chosenCareer   Career? @relation("SessionChosenCareer", fields: [chosenCareerId], references: [id], onDelete: SetNull)
+
+  classId     String?
+  schoolClass Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  completedAt DateTime?
+
+  /// Aimag or duureg, used to prefer local universities and programmes.
+  /// Free text on purpose — it is a recommendation input, not an identifier.
+  region String?
+
+  /// Empty for a clean session. Never blocks the student (§4).
+  validityFlags InvalidityFlag[]
+
+  answers         Answer[]
+  traitScores     TraitScore[]
+  careerMatches   CareerMatch[]
+  roadmapProgress RoadmapProgress[]
+
+  @@index([classId])
+  @@index([completedAt])
+}
+
+model Question {
+  id String @id @default(cuid())
+
+  /// Stable authoring key, e.g. "ability.logic.03". Not in the original §3
+  /// model list, added because seeded content has to be re-runnable: without
+  /// a natural key, `bun run seed` either duplicates rows or has to delete
+  /// Questions, which would cascade-delete real students' Answers.
+  key String @unique
+
+  blockId String
+  order   Int
+  variant QuestionVariant
+  kind    QuestionKind
+
+  promptMn String
+
+  /// Inline SVG for spatial and logic items. Inline, not a URL, because the
+  /// test flow ships no raster images and must work on a slow connection.
+  assetSvg String?
+
+  /// Required when kind = TIMED_ABILITY. Prisma cannot express a conditional
+  /// NOT NULL, so the rule is enforced by the seed Zod schema.
+  timeLimitSec Int?
+
+  isActive Boolean @default(true)
+
+  options QuestionOption[]
+  answers Answer[]
+
+  @@index([blockId, order])
+  @@index([variant, isActive])
+}
+
+model QuestionOption {
+  id         String   @id @default(cuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  order      Int
+
+  labelMn  String
+  assetSvg String?
+
+  /// { "LOGIC": 2, "SPATIAL": 1 } — SERVER-ONLY. This is the scoring key.
+  /// It must never be mapped into a DTO that reaches the client bundle,
+  /// or the test becomes trivially gameable.
+  traitDeltas Json
+
+  /// Only meaningful for ability items.
+  isCorrect Boolean?
+
+  answers Answer[]
+
+  @@unique([questionId, order])
+}
+
+model Answer {
+  id         String   @id @default(cuid())
+  sessionId  String
+  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  optionId String?
+  option   QuestionOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+
+  /// Ordered option `order` values for RANK items, best first. Prisma scalar
+  /// lists cannot be null, so an empty array means "not a rank answer".
+  rankOrder   Int[]
+  sliderValue Int?
+
+  elapsedMs  Int
+  answeredAt DateTime @default(now())
+
+  /// One answer per question per session. This is also what makes the
+  /// autosave action idempotent: it upserts on this key, so a retried
+  /// request from a flaky mobile connection cannot double-write.
+  @@unique([sessionId, questionId])
+  @@index([sessionId])
+}
+
+model TraitScore {
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  trait     Trait
+
+  raw        Int
+  /// 0..100, normalized against the theoretical range of the active question
+  /// set — never against other students (§4).
+  normalized Int
+  percentile Int?
+
+  @@id([sessionId, trait])
+}
+
+model CareerMatch {
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  careerId  String
+  career    Career  @relation(fields: [careerId], references: [id], onDelete: Cascade)
+
+  /// 0..100 as computed; the UI floors the displayed value at 35 (§4).
+  score Int
+  rank  Int
+
+  /// The four dimensions kept apart so the career page can say which one
+  /// drove the match (§4, §5.4).
+  abilityScore     Int
+  interestScore    Int
+  personalityScore Int
+  valueScore       Int
+
+  /// Top contributing traits, for explainability. Written by the scoring
+  /// engine, never by the model.
+  reasonTraits Trait[]
+
+  /// AI-written prose, cached. Null is a fully supported state.
+  narrativeMn   String?
+  /// Hash of the inputs the narrative was written from, for invalidation.
+  narrativeHash String?
+
+  @@id([sessionId, careerId])
+  @@index([sessionId, rank])
+}
+
+model RoadmapProgress {
+  sessionId     String
+  session       Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  roadmapStepId String
+  roadmapStep   RoadmapStep @relation(fields: [roadmapStepId], references: [id], onDelete: Cascade)
+
+  done      Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+
+  /// Composite key, so ticking a box is an upsert and therefore idempotent.
+  @@id([sessionId, roadmapStepId])
+}
+
+// --- content ---------------------------------------------------------------
+
+model Career {
+  id          String @id @default(cuid())
+  slug        String @unique
+  nameMn      String
+  categoryMn  String
+  summaryMn   String
+  dayInLifeMn String
+
+  /// { "LOGIC": 0.8, "HELPING": 0.9, ... } across the 23 traits, each 0..1.
+  /// Range validated by the seed Zod schema.
+  traitWeights Json
+
+  demandNow    DemandLevel
+  demandFuture DemandLevel
+
+  aiRisk       AiRisk
+  /// One sentence: what AI takes, and what stays.
+  aiRiskNoteMn String
+
+  saturation      Saturation
+  /// Null where no real Mongolian source exists. The UI omits the row rather
+  /// than showing an invented figure (§7 sourcing rule).
+  gradsPerYear    Int?
+  openingsPerYear Int?
+
+  salaryStartMnt Int
+  salaryMidMnt   Int
+
+  yearsOfStudy        Float
+  yearsToIndependence Float?
+
+  requiredEeshSubjects String[]
+
+  /// Three ids, chosen for trait overlap rather than category. Not a
+  /// relation: validated at seed time (see the file header).
+  adjacentCareerIds String[]
+
+  isActive Boolean @default(true)
+
+  realityChecks RealityCheck[]
+  roadmapSteps  RoadmapStep[]
+  careerMatches CareerMatch[]
+  chosenBy      Session[]      @relation("SessionChosenCareer")
+
+  @@index([isActive])
+}
+
+model RealityCheck {
+  id       String @id @default(cuid())
+  careerId String
+  career   Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  order    Int
+
+  /// The "Мэдэж байсан уу?" item.
+  questionMn String
+  /// The fact revealed after answering.
+  factMn     String
+  /// How surprising this is if unknown.
+  weight     Int
+
+  @@unique([careerId, order])
+}
+
+model University {
+  id  String @id @default(cuid())
+  /// Stable authoring key. See the note on Question.key.
+  key String @unique
+
+  nameMn   String
+  city     String
+  isPublic Boolean
+  website  String?
+
+  programs Program[]
+}
+
+model Program {
+  id  String @id @default(cuid())
+  /// Stable authoring key. See the note on Question.key.
+  key String @unique
+
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  /// Careers this programme leads to. Validated at seed time.
+  careerIds String[]
+
+  nameMn        String
+  tuitionMnt    Int?
+  eeshThreshold Int?
+  durationYears Float
+  quotaNotes    String?
+
+  @@index([universityId])
+}
+
+model Scholarship {
+  id  String @id @default(cuid())
+  /// Stable authoring key. See the note on Question.key.
+  key String @unique
+
+  nameMn   String
+  country  String
+  provider String
+
+  coverageMn    String
+  /// 1..12. Only the month, because exact deadlines move every year and a
+  /// stale date is worse than none.
+  deadlineMonth Int
+  eligibilityMn String
+  url           String
+
+  careerIds String[]
+}
+
+model RoadmapStep {
+  id  String @id @default(cuid())
+  /// Stable authoring key. See the note on Question.key.
+  key String @unique
+
+  careerId   String
+  career     Career          @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  gradeLevel Int
+  category   RoadmapCategory
+
+  titleMn     String
+  detailMn    String
+  resourceUrl String?
+
+  progress RoadmapProgress[]
+
+  @@index([careerId, gradeLevel])
+}
+
+// --- schools ---------------------------------------------------------------
+
+model School {
+  id  String @id @default(cuid())
+  /// Stable authoring key. See the note on Question.key.
+  key String @unique
+
+  nameMn       String
+  aimag        String
+  contactEmail String
+
+  classes Class[]
+}
+
+model Class {
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  /// e.g. 23R-8A — what a student types to attach their session.
+  code        String   @unique
+  gradeLevel  Int
+  teacherName String
+  createdAt   DateTime @default(now())
+
+  /// Separate long code, emailed at class creation. A student session can
+  /// never reach /s/ (§5.6), so this is the only key to the teacher view.
+  teacherCodeHash String? @unique
+
+  sessions Session[]
+
+  @@index([schoolId])
+}
