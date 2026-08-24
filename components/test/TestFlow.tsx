@@ -455,6 +455,15 @@ export function TestFlow({
         </div>
       </Card>
 
+      <button
+        type="button"
+        disabled={submitting}
+        onClick={() => void submitAnswer({})}
+        className="mt-4 text-sm font-medium text-ink-faint underline underline-offset-2 disabled:opacity-40"
+      >
+        Алгасах →
+      </button>
+
       {errorMn && <p className="mt-4 text-danger">{errorMn}</p>}
     </Container>
   );
