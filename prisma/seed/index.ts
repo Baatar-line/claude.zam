@@ -41,6 +41,24 @@ function validate(): SeedDataset {
 async function write(prisma: PrismaClient, dataset: SeedDataset): Promise<void> {
   await prisma.$transaction(
     async (tx) => {
+      // --- blocks -----------------------------------------------------------
+      for (const block of dataset.blocks) {
+        await tx.block.upsert({
+          where: { key: block.key },
+          create: {
+            key: block.key,
+            order: block.order,
+            titleMn: block.titleMn,
+            descriptionMn: block.descriptionMn,
+          },
+          update: {
+            order: block.order,
+            titleMn: block.titleMn,
+            descriptionMn: block.descriptionMn,
+          },
+        });
+      }
+
       // --- careers, then their children ---------------------------------
       const careerIdBySlug = new Map<string, string>();
 
@@ -338,6 +356,7 @@ async function main(): Promise<void> {
   const dataset = validate();
 
   const counts = {
+    blocks: dataset.blocks.length,
     questions: dataset.questions.length,
     options: dataset.questions.reduce((sum, q) => sum + q.options.length, 0),
     careers: dataset.careers.length,

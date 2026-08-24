@@ -1,12 +1,45 @@
 /**
- * TailwindCSS v4, CSS-first configuration.
+ * TailwindCSS v4, CSS-first configuration — the design system (§1).
  *
- * §1 (design system) owns this file: it fills in the token set — --paper,
- * --ink, the signal colours, the three type families — as @theme variables.
- * Until then this is only the reset, so that §2's scaffold renders plainly
- * instead of inventing a look that §1 will have to undo.
+ * Palette: warm paper, warm ink, a terracotta accent. Chosen to read as
+ * Mongolian without being folkloric, and to stay legible in daylight, in a
+ * classroom, on a cheap phone screen (§1 brief) — which is why there is no
+ * dark mode and no low-contrast gray-on-gray: every text/background pairing
+ * below meets WCAG AA at body size.
+ *
+ * The three match-band colours (--color-band-*) are deliberately NOT the
+ * same hue as --color-accent, so a "partial match" badge is never mistaken
+ * for a brand-coloured button. DIVERGENT is violet, not red: §4 is explicit
+ * that there is no "bad" match level, only an interesting difference.
  */
 @import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-noto), "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+
+  --color-paper: #fafaf8;
+  --color-paper-raised: #ffffff;
+  --color-ink: #1c1917;
+  --color-ink-soft: #57534e;
+  --color-ink-faint: #78716c;
+  --color-line: #e7e2da;
+  --color-line-soft: #f0ece5;
+
+  --color-accent: #c05621;
+  --color-accent-hover: #9c4221;
+  --color-accent-soft: #fbeee3;
+  --color-accent-ink: #ffffff;
+
+  --color-band-strong: #15803d;
+  --color-band-strong-soft: #e8f5ec;
+  --color-band-partial: #a16207;
+  --color-band-partial-soft: #f8f0dc;
+  --color-band-divergent: #6d28d9;
+  --color-band-divergent-soft: #efe9fb;
+
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fbebeb;
+}
 
 html {
   -webkit-text-size-adjust: 100%;
@@ -15,4 +48,14 @@ html {
 body {
   margin: 0;
   min-height: 100dvh;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* A student navigating by keyboard or switch control must always see where
+   focus is — the classroom devices this ships to are not all touchscreens. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }

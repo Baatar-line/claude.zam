@@ -168,6 +168,29 @@ model Session {
   @@index([completedAt])
 }
 
+/// Not in the original §3 model list. Added to close a gap found before §5.2
+/// could be built: Question.blockId was a bare string with nowhere to hang a
+/// display name, but the test flow has to show a block's name and one
+/// sentence between blocks (§5.2). Blocks are seeded content, keyed and
+/// upserted the same way Career or University are, rather than a hardcoded
+/// label map — so re-grouping or renaming a block next year is a content
+/// edit, not a code change.
+model Block {
+  id String @id @default(cuid())
+
+  /// Matches the values Question.blockId carries. Not a foreign key, for the
+  /// same reason Career.adjacentCareerIds is not (see the file header):
+  /// referential integrity is checked by the seed validator in prisma/seed,
+  /// never at request time.
+  key String @unique
+
+  order         Int
+  titleMn       String
+  descriptionMn String
+
+  @@index([order])
+}
+
 model Question {
   id String @id @default(cuid())
 

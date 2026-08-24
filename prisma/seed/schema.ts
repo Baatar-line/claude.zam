@@ -61,6 +61,18 @@ export const traitWeightsSchema = z.record(traitSchema, z.number().min(0).max(1)
  */
 export const traitDeltasSchema = z.partialRecord(traitSchema, z.number().finite());
 
+// --- blocks -------------------------------------------------------------
+
+/// One-sentence transition copy shown between blocks (§5.2). Not in the
+/// original §3 model list — see the comment on `model Block` in
+/// schema.prisma for why this is seeded content rather than a label map.
+export const blockSeedSchema = z.object({
+  key: keySchema,
+  order: z.int().min(0).max(100),
+  titleMn: mnText(2, 60),
+  descriptionMn: mnText(5, 200),
+});
+
 // --- questions --------------------------------------------------------------
 
 export const questionKindSchema = z.enum([
@@ -360,6 +372,7 @@ export const seedDatasetSchema = z
      * "content" is the real §7 dataset and is held to the sourcing rule.
      */
     kind: z.enum(["fixture", "content"]),
+    blocks: z.array(blockSeedSchema).default([]),
     questions: z.array(questionSeedSchema).default([]),
     careers: z.array(careerSeedSchema).default([]),
     universities: z.array(universitySeedSchema).default([]),
@@ -389,6 +402,7 @@ export const seedDatasetSchema = z
       }
     };
 
+    reportDuplicates(dataset.blocks.map((b) => b.key), "blocks", "block key");
     reportDuplicates(dataset.careers.map((c) => c.slug), "careers", "career slug");
     reportDuplicates(dataset.questions.map((q) => q.key), "questions", "question key");
     reportDuplicates(
@@ -416,6 +430,17 @@ export const seedDatasetSchema = z
       "schools",
       "class code",
     );
+
+    const blockKeys = new Set(dataset.blocks.map((block) => block.key));
+    dataset.questions.forEach((question, index) => {
+      if (!blockKeys.has(question.blockId)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["questions", index, "blockId"],
+          message: `unknown block key: ${question.blockId}`,
+        });
+      }
+    });
 
     // Referential integrity for the String[] id arrays.
     const checkCareerRefs = (slugs: string[], path: (string | number)[]): void => {

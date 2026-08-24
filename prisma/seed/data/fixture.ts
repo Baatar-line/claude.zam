@@ -28,6 +28,33 @@ const PLACEHOLDER_SALARY_MID = 2_500_000;
 export const fixtureDataset: SeedDatasetInput = {
   kind: "fixture",
 
+  blocks: [
+    {
+      key: "chadvar",
+      order: 0,
+      titleMn: "Чадвар",
+      descriptionMn: "Энэ хэсэгт цаг хэмжсэн бодлого байна — бод, харин бүү яараарай.",
+    },
+    {
+      key: "sonirhol",
+      order: 1,
+      titleMn: "Сонирхол",
+      descriptionMn: "Зөв, буруу хариулт байхгүй — юу чиний сонирхлыг татдгийг л сонго.",
+    },
+    {
+      key: "zan-tolov",
+      order: 2,
+      titleMn: "Зан төлөв",
+      descriptionMn: "Чи ямар хүн болохыг асууна — өдөр тутамдаа ихэвчлэн ямар байдгаараа хариул.",
+    },
+    {
+      key: "unet-zuil",
+      order: 3,
+      titleMn: "Үнэт зүйл",
+      descriptionMn: "Ажлаасаа юуг хамгийн их хүсдгээ бод.",
+    },
+  ],
+
   questions: [
     {
       key: "chadvar.logic.01",
