@@ -239,12 +239,14 @@ async function write(prisma: PrismaClient, dataset: SeedDataset): Promise<void> 
           create: {
             key: university.key,
             nameMn: university.nameMn,
+            country: university.country,
             city: university.city,
             isPublic: university.isPublic,
             website: university.website ?? null,
           },
           update: {
             nameMn: university.nameMn,
+            country: university.country,
             city: university.city,
             isPublic: university.isPublic,
             website: university.website ?? null,

@@ -158,8 +158,13 @@ export const completeSession = defineAction({
             raw: Math.round(value.raw),
             normalized: value.normalized,
             percentile: null,
+            measured: value.measured,
           },
-          update: { raw: Math.round(value.raw), normalized: value.normalized },
+          update: {
+            raw: Math.round(value.raw),
+            normalized: value.normalized,
+            measured: value.measured,
+          },
         });
       }
 

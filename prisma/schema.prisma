@@ -126,6 +126,30 @@ enum InvalidityFlag {
   INCOMPLETE
 }
 
+/// Not in the original §3 model list. Self-reported, optional, entered on
+/// the result page after the test — never asked during the test itself,
+/// so it cannot bias an answer. Display-only: lib/scoring never reads it,
+/// and no CareerMatch score changes because of it (see the note on
+/// Session.mbtiType). Sixteen letters, the widely-known set.
+enum MbtiType {
+  INTJ
+  INTP
+  ENTJ
+  ENTP
+  INFJ
+  INFP
+  ENFJ
+  ENFP
+  ISTJ
+  ISFJ
+  ESTJ
+  ESFJ
+  ISTP
+  ISFP
+  ESTP
+  ESFP
+}
+
 // --- student data ----------------------------------------------------------
 
 model Session {
@@ -158,6 +182,19 @@ model Session {
 
   /// Empty for a clean session. Never blocks the student (§4).
   validityFlags InvalidityFlag[]
+
+  /// Optional, self-reported, entered on the result page (not §3, not the
+  /// scoring model). HARD RULE: lib/scoring stays pure over the 23 traits
+  /// only — these two fields feed a display-only note next to the result,
+  /// never a CareerMatch score. MBTI in particular has weak psychometric
+  /// backing; showing it as a familiar extra lens is a defensible product
+  /// choice, letting it quietly steer which careers a student is told they
+  /// fit is not.
+  mbtiType MbtiType?
+  /// Whatever the student remembers from a prior IQ test. Unverified by
+  /// construction — there is no proctor here — so it is presented with that
+  /// caveat, never as a measured fact.
+  iqScore  Int?
 
   answers         Answer[]
   traitScores     TraitScore[]
@@ -282,6 +319,15 @@ model TraitScore {
   normalized Int
   percentile Int?
 
+  /// Not in the original §3 model list. scoreTraits() returns this per
+  /// trait (§4: false means the active question set could not move the
+  /// trait at all, so `normalized` is a neutral 50, not a finding) but
+  /// nothing persisted it, so the result page could not tell "genuinely
+  /// scored 50" apart from "never measured" without recomputing the whole
+  /// scoring pass at read time. Written once at completeSession, read-only
+  /// after that.
+  measured Boolean @default(true)
+
   @@id([sessionId, trait])
 }
 
@@ -399,6 +445,11 @@ model University {
   key String @unique
 
   nameMn   String
+  /// Not in the original §3 model list. Added so the career page can split
+  /// programmes into "Монголд" / "Гадаадад" tabs — §3 only ever anticipated
+  /// domestic universities. Defaulted for the migration so existing rows
+  /// (all domestic) do not need a backfill.
+  country  String @default("Монгол")
   city     String
   isPublic Boolean
   website  String?

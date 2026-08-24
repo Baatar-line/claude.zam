@@ -322,6 +322,9 @@ export const programSeedSchema = z.object({
 export const universitySeedSchema = z.object({
   key: keySchema,
   nameMn: mnText(2, 160),
+  /// "Монгол" for a domestic university, the country name otherwise — the
+  /// career page groups programmes into "Монголд" / "Гадаадад" on this.
+  country: mnText(2, 60),
   city: mnText(2, 60),
   isPublic: z.boolean(),
   website: z.url().optional(),
